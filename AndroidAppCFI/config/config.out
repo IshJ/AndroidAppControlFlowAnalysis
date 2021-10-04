@@ -1,0 +1,41 @@
+//timing monotonic->0, thread_counter->1
+//scan_method reload_and_flush->0, flush_flush->1
+//scanAddresses->ChildB#methodB-26,0,2,4,6_ChildC#methodC-24,1,4,5,7-t default 0
+//scanMethod->ChildB#methodB-26,0,2,4,6_ChildC#methodC-24,1,4,5,7RainViewerActivity#onCreate_2
+//scanAddresses->ChildB#methodB-26,1
+
+
+yield:1
+delayWithin:100
+waitVal:1
+delayBetween:30
+interLoopCount:10
+innerLoopCount:2
+timing:1
+delayWithinViews:1000
+//for app. just the names
+targetMethods:ChildB.methodB,ChildC.methodC 
+sideChannelOffsets:000000,5d89b0,5df028,8d55bc,8d5aa8,8d7574,8d7978,8d7f20,8d8d68,8d91ec,8d9590,ba8a3c,ba8b40,baac60,bab028,bad594,bad8f0,badbe4,bade2c,bae0e8,bae924
+isAdjust:1
+execOffset:0019d000
+splitVal:5
+
+//hitCounterAlgo
+pauseVal:2
+hitVal:-1
+resetHitCounter:0
+
+//for odex, only oofsets from this method will be scanned
+addressForAdjusting:5db7d4
+//for odex
+targetMethodsOdex:ChildB#methodB_2
+scanAddresses:0
+offsetInc:1
+
+offsetStart:0
+beginStackMap:0
+
+scanAddressBegin:4472576
+targetLimit:20
+
+offsetMapSize:20
