@@ -13,6 +13,9 @@ public class JavaMethod {
     private List<String> appOffsets= new ArrayList<>();
     private boolean isActive = false;
     private int size=0;
+    private List<BoundaryTime> boundaryTimes = new ArrayList<>();
+    private List<Integer> hitTimes = new ArrayList<>();
+
 
 
 
@@ -107,5 +110,39 @@ public class JavaMethod {
 
     public void setSize(int size) {
         this.size = size;
+    }
+
+    public String getShortName(){
+        String[] splits = this.getAppName().split("\\(")[0].split("\\.");
+        return splits[splits.length-1];
+
+    }
+
+    public void addBoundaryTime(int startTime, int endTime){
+        boundaryTimes.add(new BoundaryTime(startTime, endTime));
+    }
+
+    public void addHitTime(int hitTime){
+        hitTimes.add(hitTime);
+    }
+
+
+}
+
+class BoundaryTime{
+    int startTime;
+    int endTime;
+
+    public BoundaryTime(int startTime, int endTime) {
+        this.startTime = startTime;
+        this.endTime = endTime;
+    }
+
+    public int getStartTime() {
+        return startTime;
+    }
+
+    public int getEndTime() {
+        return endTime;
     }
 }

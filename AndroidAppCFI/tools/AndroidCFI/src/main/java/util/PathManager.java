@@ -17,11 +17,13 @@ public class PathManager {
     static  String sideChannelDbPath = dbFolderPath + "side_channel_info_full.out";
     static  String filteredOutputPath = dbFolderPath + "filtered.out";
     static  String processedRecordsPath = dbFolderPath + "processedRecords.out";
+    static  String chartWorkerRecordsPath = dbFolderPath + "chartWorkerRecords.out";
 
     static  String logPath = rootFolderPath + "log.out";
     static  String oatFilePath = rootFolderPath + "oatdump.out";
 
-    static String AddressStatsOut = metricsFolderPath + "addressStats.out";
+    static String addressStatsOut = metricsFolderPath + "addressStats.out";
+    static String methodStatsOut = metricsFolderPath + "methodStats.out";
     static  String toolConfigFilePath = configFolderPath + "toolConfig.out";
     static  String configFilePath = configFolderPath + "config.out";
 
@@ -65,6 +67,10 @@ public class PathManager {
         return processedRecordsPath;
     }
 
+    public static String getChartWorkerRecordsPath() {
+        return chartWorkerRecordsPath;
+    }
+
     public static String getLogPath() {
         return logPath;
     }
@@ -74,7 +80,11 @@ public class PathManager {
     }
 
     public static String getAddressStatsOut() {
-        return AddressStatsOut;
+        return addressStatsOut;
+    }
+
+    public static String getMethodStatsOut() {
+        return methodStatsOut;
     }
 
     public static String getToolConfigFilePath() {

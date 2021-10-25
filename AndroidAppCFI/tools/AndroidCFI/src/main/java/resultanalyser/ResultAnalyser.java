@@ -11,6 +11,7 @@ import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
 import util.ConfigManager;
 import util.PathManager;
+import util.RuntimeExecutor;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -32,6 +33,7 @@ public class ResultAnalyser {
     static final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
 
     static String title = "aspect-based";
+    static String backUpFolderName = "";
 
     static boolean isFilteringAddresses = false;
     static List<Integer> filterAddressIds = Arrays.asList(0);
@@ -59,43 +61,42 @@ public class ResultAnalyser {
     static final int windowSize = 60;
     static final int minPointsToCluster = 8;
 
-    public static int threshold = 215;
-    public static boolean onlyPositive = false;
+    public static int floorVal = 0;
+    public static int ceilingVal = 50;
+    public static boolean onlyPositive = true;
 
     private static final String innerRecordSplitter = "\\|";
 
     private static final Color TRANSPARENT_COLOUR = new Color(0x00FFFFFF, true);
 
-    private static final int concatIndex = 2000000;
+    private static final int concatIndex = 1000000;
 
 
     public static void main(String[] args) {
         try {
             if (args.length > 0) {
-                title = args[0];
+                backUpFolderName = args[0];
+                System.out.println(backUpFolderName);
             }
             List<String> sideChannelLines = Files.lines(Paths.get(PathManager.getSideChannelDbPath()), StandardCharsets.ISO_8859_1).collect(Collectors.toList());
             List<String> groundTruthLines = Files.lines(Paths.get(PathManager.getGroundTruthDbPath()), StandardCharsets.ISO_8859_1).collect(Collectors.toList());
+
+            Map<String, String> toolConfigMap = ConfigManager.readConfigs(PathManager.getToolConfigFilePath());
+            Map<String, String> configMap = ConfigManager.readConfigs(PathManager.getConfigFilePath());
+            ceilingVal = Integer.parseInt(toolConfigMap.get("ceilVal"));
+            floorVal = Integer.parseInt(toolConfigMap.get("floorVal"));
 
             filterSideChannelRecords(sideChannelLines, groundTruthLines, aroundGroundTruths, hitCounterBased);
 
             List<String> logLines = Files.lines(Paths.get(PathManager.getLogPath()), StandardCharsets.ISO_8859_1).collect(Collectors.toList());
             List<String> filteredSideChannelLines = Files.lines(Paths.get(PathManager.getFilteredOutputPath()), StandardCharsets.ISO_8859_1).collect(Collectors.toList());
 
-            Map<String, String> toolConfigMap = ConfigManager.readConfigs(PathManager.getToolConfigFilePath());
-            Map<String, String> configMap = ConfigManager.readConfigs(PathManager.getConfigFilePath());
 
             title = title + "_" + (toolConfigMap.get("threshold") == null ? "" : toolConfigMap.get("threshold")) + "_";
-            threshold = Integer.parseInt(toolConfigMap.get("threshold"));
+
 
             if ("0".equals(toolConfigMap.get("parseLogs"))) {
                 return;
-            }
-            if (heapIssue) {
-                filteredSideChannelLines = filteredSideChannelLines.subList(filteredSideChannelLines.size() * recordSplitCountStart / recordSplitCount,
-                        filteredSideChannelLines.size() * (recordSplitCountStart + 1) / recordSplitCount);
-                groundTruthLines = groundTruthLines.subList(groundTruthLines.size() * recordSplitCountStart / recordSplitCount,
-                        groundTruthLines.size() * (recordSplitCountStart + 1) / recordSplitCount);
             }
 
 
@@ -108,10 +109,10 @@ public class ResultAnalyser {
             List<String> seriesNames = getAddressIdNameMapping(toolConfigMap, activeOdexM);
 
             List<JavaMethod> analysedMethods = getAnalysedMethods(odexToAppMethodIdMap, toolConfigMap, configMap);
-
+            System.out.println("mapped methods\n>" + analysedMethods.stream().filter(JavaMethod::isActive).map(JavaMethod::getOdexName).collect(Collectors.joining("\n>")) + "\n");
             String graphName = generateGraph(groundTruthLines, filteredSideChannelLines, seriesNames, title, analysedMethods);
             executePythonScript();
-            backupData(graphName);
+            backupData(graphName, backUpFolderName);
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
@@ -119,27 +120,21 @@ public class ResultAnalyser {
     }
 
     private static void executePythonScript() throws IOException, InterruptedException {
-        Process p = Runtime.getRuntime().exec("python3 " + PathManager.getScriptFolderPath() + "heatMapGenerator.py");
-        InputStream stdout = p.getInputStream();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(stdout, StandardCharsets.UTF_8));
-        String line;
-        while ((line = reader.readLine()) != null) {
-            System.out.println("stdout: " + line);
-        }
-
+        RuntimeExecutor.runCommand("python3 " + PathManager.getScriptFolderPath() + "heatMapGenerator.py", true);
     }
 
 
-    private static void backupData(String graphName) {
-        long timeStamp = System.currentTimeMillis();
-        File backupPath = new File(PathManager.getDbFolderPath() + timeStamp);
-        String backupPathString = PathManager.getDbFolderPath() + timeStamp + File.separator;
+    private static void backupData(String graphName, String backUpFolderName) {
+        backUpFolderName = backUpFolderName + System.currentTimeMillis();
+        File backupPath = new File(PathManager.getDbFolderPath() + backUpFolderName);
+        String backupPathString = PathManager.getDbFolderPath() + backUpFolderName + File.separator;
         backupPath.mkdir();
         try {
 
             Files.copy(new File(PathManager.getSideChannelDbPath()).toPath(), new File(backupPathString + "side_channel_info_full.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(PathManager.getGroundTruthDbPath()).toPath(), new File(backupPathString + "ground_truth_full.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(PathManager.getProcessedRecordsPath()).toPath(), new File(backupPathString + "processedRecords.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(new File(PathManager.getChartWorkerRecordsPath()).toPath(), new File(backupPathString + "chartWorkerRecords.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
 
             Files.copy(new File(PathManager.getLogPath()).toPath(), new File(backupPathString + "log.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(PathManager.getOatFilePath()).toPath(), new File(backupPathString + "oatdump.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
@@ -159,29 +154,42 @@ public class ResultAnalyser {
 
     static List<JavaMethod> getAnalysedMethods(Map<Integer, Integer> odexToAppMethodIdMap, Map<String, String> toolConfigMap, Map<String, String> configMap) {
         List<JavaMethod> methods = new ArrayList<>();
-        Map<Integer, String> methodIdAdMapping = Arrays.stream(toolConfigMap.get("methodIdAdMapping").split("\\|")).collect(Collectors.toMap(
-                s -> Integer.parseInt(s.split("=")[0]), s -> s.split("=")[1]
-        ));
+        Map<Integer, String> methodIdAdMapping = Arrays.stream(toolConfigMap.get("methodIdAdMapping").split("\\|"))
+                .filter(s -> s.contains("="))
+                .collect(Collectors.toMap(
+                        s -> Integer.parseInt(s.split("=")[0]), s -> s.split("=")[1]
+                ));
 
         Map<String, Integer> revMethodIdAdMapping = methodIdAdMapping.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
-        Map<Integer, String> methodIdNameMapping = Arrays.stream(toolConfigMap.get("methodIdNameMapping").split("\\|")).collect(Collectors.toMap(
-                s -> Integer.parseInt(s.split("=")[0].strip()), s -> s.split("=")[1].strip()
-        ));
-        Map<Integer, Integer> methodIdSizeMapping = Arrays.stream(toolConfigMap.get("methodIdSizeMapping").split("\\|")).collect(Collectors.toMap(
-                s -> Integer.parseInt(s.split("=")[0]), s -> Integer.parseInt(s.split("=")[1])
-        ));
+        Map<Integer, String> methodIdNameMapping = Arrays.stream(toolConfigMap.get("methodIdNameMapping").split("\\|"))
+                .filter(s -> s.contains("="))
+                .collect(Collectors.toMap(
+                        s -> Integer.parseInt(s.split("=")[0].strip()), s -> s.split("=")[1].strip()
+                ));
+        Map<Integer, Integer> methodIdSizeMapping = Arrays.stream(toolConfigMap.get("methodIdSizeMapping").split("\\|"))
+                .filter(s -> s.contains("="))
+                .collect(Collectors.toMap(
+                        s -> Integer.parseInt(s.split("=")[0]), s -> Integer.parseInt(s.split("=")[1])
+                ));
 
         Map<Integer, String> appMethodIdNameMapping = Arrays.stream(toolConfigMap.get("MethodMap").split("\\|"))
                 .filter(s -> s.contains("="))
                 .collect(Collectors.toMap(
-                s -> Integer.parseInt(s.split("=")[1].strip()), s -> s.split("=")[0].strip()
-        ));
+                        s -> Integer.parseInt(s.split("=")[1].strip()), s -> s.split("=")[0].strip()
+                ));
 
         List<String> odexOffsets = new ArrayList<>(List.of(configMap.get("sideChannelOffsets").split(",")));
         List<String> appOffsets = new ArrayList<>(List.of(toolConfigMap.get("offsets").split(",")));
+
+        if (odexOffsets.size() != appOffsets.size()) {
+            System.out.println("odexOffsets length != appOffsets length! (" + odexOffsets.size() + "," + appOffsets.size() + ")");
+            System.exit(0);
+        }
+
         odexOffsets.remove(0);
         appOffsets.remove(0);
+
 
         int curId = 0;
         for (int i = 0; i < odexOffsets.size(); i++) {
@@ -220,12 +228,12 @@ public class ResultAnalyser {
                                        List<String> seriesNames,
                                        String title, List<JavaMethod> analysedMethods) throws IOException {
         Map<Integer, Map<Integer, Integer>> boundaries = parseForBoundaries(groundTruthLines, true, analysedMethods);
-        String graphName = "";
-//        filterMethodIds = filterAddressIds.stream().map(methodIdMapping::get).collect(Collectors.toList());
         Map<Integer, Map<Integer, Integer>> timings = parseForAddress(sideChannelLines, true, analysedMethods);
 
         writeToFile(boundaries, timings);
-
+        writeForChartWorker(boundaries, timings, seriesNames);
+        StatCalculator.calculateScoresForWindowCountBased(boundaries, timings, analysedMethods, ceilingVal);
+        String graphName = "";
         Map<Integer, List<Color>> colourMap = getColourLists(timings.size(), boundaries.size());
 
         List<Integer> timeKeys = timings.keySet().stream()
@@ -234,9 +242,8 @@ public class ResultAnalyser {
                 .distinct()
                 .sorted()
                 .collect(Collectors.toList());
-        ;
+
         timeKeys.remove(timeKeys.size() - 1);
-        List<JFreeChart> charts = new ArrayList<>();
 
         try {
             Map<Integer, Map<Integer, Integer>> tempTimings = new HashMap<>();
@@ -264,51 +271,28 @@ public class ResultAnalyser {
                 List<Integer> keys = timeKeys.subList(i * graphSize, (i + 1) * graphSize);
                 if (isFilteringMethods) {
                     IntStream.range(0, filterMethodIds.size()).forEach(bkey ->
-                            keys.forEach(k -> tempBoundaries.get(bkey).put(k, boundaries.get(filterMethodIds.get(bkey)).get(k))));
+                            keys.forEach(k -> tempBoundaries.get(bkey).put(k, filterMethodIds.get(bkey))));
+                    tempTimings.keySet().forEach(tkey -> keys.forEach(k -> tempTimings.get(tkey).put(k, timings.get(filterAddressIds.get(tkey)).get(k))));
+
                 } else {
-                    tempBoundaries.keySet().forEach(bkey -> boundaries.get(bkey).keySet()
-                            .forEach(k -> tempBoundaries.get(bkey).put(k, boundaries.get(bkey).get(k))));
+                    tempBoundaries.keySet()
+                            .forEach(bkey -> boundaries.get(bkey).keySet()
+                                    .forEach(k -> tempBoundaries.get(bkey).put(k, bkey)));
+                    tempTimings.keySet()
+                            .forEach(tkey -> timings.get(tkey).keySet()
+                                    .forEach(k -> tempTimings.get(tkey).put(k, timings.get(tkey).get(k))));
                 }
 
-                if (allAddressesInOneGraph) {
-                    if (isFilteringAddresses) {
-                        tempTimings.keySet().forEach(tkey -> keys.forEach(k -> tempTimings.get(tkey).put(k, timings.get(filterAddressIds.get(tkey)).get(k))));
-                    } else {
-                        tempTimings.keySet().forEach(tkey -> keys.forEach(k -> tempTimings.get(tkey).put(k, timings.get(tkey).get(k))));
-
-                    }
+                graphName = PathManager.getGraphFolderPath() + title + i;
+                if (splitCount == 1 && !combineGraphs) {
                     graphName = PathManager.getGraphFolderPath() + title + i;
-                    if (splitCount == 1 && !combineGraphs) {
-                        graphName = PathManager.getGraphFolderPath() + title + i;
-                    }
-
-                    graphName = createCombGraph(tempTimings, tempBoundaries, seriesNames, colourMap, graphName, analysedMethods);
-                    if (combineGraphs) {
-                        graphNames.add(graphName);
-                    }
-
-
-                } else {
-                    for (int ad = 0; ad < timings.size(); ad++) {
-                        if (isFilteringAddresses && !filterAddressIds.contains(ad)) {
-                            continue;
-                        }
-                        System.out.println("starting " + i + "_" + ad);
-                        int finalAd = ad;
-                        keys.forEach(k -> tempTimings.get(0).put(k, timings.get(finalAd).get(k)));
-                        graphName = PathManager.getGraphFolderPath() + title + i + "_" + ad;
-                        if (splitCount == 1 && !combineGraphs) {
-                            graphName = PathManager.getGraphFolderPath() + title + i + "_" + ad;
-                        }
-
-                        graphName = createCombGraph(tempTimings, tempBoundaries, seriesNames, colourMap, graphName, analysedMethods);
-
-                        if (combineGraphs) {
-                            graphNames.add(graphName);
-                        }
-                        tempTimings.get(0).clear();
-                    }
                 }
+
+                graphName = createCombGraph(tempTimings, tempBoundaries, seriesNames, colourMap, graphName, analysedMethods);
+                if (combineGraphs) {
+                    graphNames.add(graphName);
+                }
+
                 tempBoundaries.keySet().forEach(k -> tempBoundaries.get(k).clear());
                 tempTimings.keySet().forEach(k -> tempTimings.get(k).clear());
 
@@ -326,6 +310,7 @@ public class ResultAnalyser {
 
     private static String createCombGraph(Map<Integer, Map<Integer, Integer>> tempTimings, Map<Integer, Map<Integer, Integer>> tempBoundaries,
                                           List<String> seriesNames, Map<Integer, List<Color>> colourMap, String graphName, List<JavaMethod> analysedMethods) throws IOException {
+//        ChartWorker.createTimeLine(tempTimings, tempBoundaries, analysedMethods);
         JFreeChart chartGt = createCombinedMap(tempTimings, tempBoundaries, colourMap, analysedMethods);
         graphName = graphName + "_gt_" + System.currentTimeMillis() + ".png";
         ChartUtils.saveChartAsPNG(new File(graphName), chartGt, 5000, 800);
@@ -356,10 +341,14 @@ public class ResultAnalyser {
             }
 
 //          adjustment for overlapping
-            if (prevEnd == startTimingCount) {
-                startTimingCount += 2;
-            }
-            boundaries.get(methodId).put(startTimingCount, methodId);
+//            if (prevEnd == startTimingCount) {
+//                startTimingCount += 2;
+//            }
+//            boundaries.get(methodId).put((startTimingCount+endTimingCount)/2, methodId);
+//            boundaries.get(methodId).put(startTimingCount, 0);
+            boundaries.get(methodId).put(startTimingCount, endTimingCount);
+//            boundaries.get(methodId).put(endTimingCount, 1);
+
         }
 
         System.out.println("done parsing boundaries");
@@ -391,7 +380,7 @@ public class ResultAnalyser {
                 continue;
             }
 
-            if (plotForAllTimes || timing < threshold) {
+            if (plotForAllTimes || (timing < ceilingVal && timing > floorVal)) {
                 timings.get(methodId).put(timingCount, methodId);
             }
         }
@@ -423,15 +412,17 @@ public class ResultAnalyser {
 
         List<String> odexMethods = new ArrayList<>(odexAddressIdMapping.keySet());
         List<String> appMethods = new ArrayList<>(appAddressIdMapping.keySet());
-
+        List<String> matchedMethodNames = new ArrayList<>();
         for (String appM : appMethods) {
             String matchingMethod = isMethodIncluded(appM, odexMethods);
             if (!matchingMethod.isEmpty()) {
                 odexToApp.put(odexAddressIdMapping.get(matchingMethod), appAddressIdMapping.get(appM));
+                matchedMethodNames.add(matchingMethod);
             }
         }
 
         System.out.println("mapped method count: " + odexToApp.size());
+
         return odexToApp;
 
     }
@@ -439,7 +430,9 @@ public class ResultAnalyser {
     private static String isMethodIncluded(String appM, List<String> m2) {
 
         return m2.stream().
-                filter(m -> appM.split("\\(")[0].split(" ")[1].contains(m.split("\\(")[0].split(" ")[1]) && compareArgs(appM.split("\\(")[1].split("\\)"), m.split("\\(")[1].split("\\)"))).
+                filter(m -> appM.split("\\(")[0].split(" ")[1].contains(m.split("\\(")[0].split(" ")[1])
+//                        && compareArgs(appM.split("\\(")[1].split("\\)"), m.split("\\(")[1].split("\\)"))
+                ).
                 findAny().orElse("");
     }
 
@@ -497,7 +490,7 @@ public class ResultAnalyser {
                     pauseCounterMap.put(address, 0);
                 }
 //                ###
-                if (timing < threshold) {
+                if (timing < ceilingVal && timing > floorVal) {
                     if (pauseCounterMap.get(address) > 1000 || hitCounterMap.get(address) > 0) {
                         hitCounterMap.put(address, hitCounterMap.get(address) + 1);
                     }
@@ -517,7 +510,7 @@ public class ResultAnalyser {
         } else {
             sideChannelLines.stream().filter(line -> {
                 int timing = Integer.parseInt(line.split(innerRecordSplitter)[1]);
-                return timing < threshold && (!aroundGroundTruths || (timing > groundTruthBegin - 10 && timing < groundTruthEnd + 10));
+                return timing < ceilingVal && timing > floorVal && (!aroundGroundTruths || (timing > groundTruthBegin - 10 && timing < groundTruthEnd + 10));
             }).forEach(filteredLines::add);
         }
 
@@ -590,7 +583,7 @@ public class ResultAnalyser {
                         .filter(t -> timings.get(mId).containsKey(t)).count();
                 int boundaryCount = (int) mTimingList.stream().filter(t -> t > finalI && t < finalI + concatIndex)
                         .filter(t -> boundaries.get(mId).containsKey(t)).count();
-                records.add(formatToRecord(List.of(i / concatIndex, mId, timingCount, boundaryCount)));
+                records.add(formatToRecord(List.of(i / concatIndex, mId, Math.min(timingCount, 10), boundaryCount)));
 
             }
 
@@ -599,6 +592,23 @@ public class ResultAnalyser {
         Files.write(Path.of(PathManager.getProcessedRecordsPath()), records, StandardCharsets.ISO_8859_1);
 
 
+    }
+
+    private static void writeForChartWorker(Map<Integer, Map<Integer, Integer>> boundaries, Map<Integer, Map<Integer, Integer>> timings,
+                                            List<String> seriesNames) throws IOException {
+
+        List<String> records = new ArrayList<>();
+        records.add("seriesNames:" + String.join(",", seriesNames));
+
+        records.add("==timings===");
+        List<Integer> methodIDList = new ArrayList<>(timings.keySet());
+        methodIDList.forEach(m -> records.add("timings_" + m + ":" + timings.get(m).keySet().stream()
+                .map(String::valueOf).collect(Collectors.joining(","))));
+        records.add("==boundaries===");
+        methodIDList.forEach(m -> records.add("boundaries_" + m + ":" + boundaries.get(m).keySet().stream()
+                .map(String::valueOf).collect(Collectors.joining(","))));
+
+        Files.write(Path.of(PathManager.getChartWorkerRecordsPath()), records, StandardCharsets.ISO_8859_1);
     }
 
     private static String formatToRecord(List<Integer> recordElements) {
@@ -633,7 +643,9 @@ public class ResultAnalyser {
 
     public static JFreeChart createCombinedMap(Map<Integer, Map<Integer, Integer>> timings, Map<Integer, Map<Integer, Integer>> boundaries,
                                                Map<Integer, List<Color>> colourMap, List<JavaMethod> analysedMethods) throws IOException {
-        List<String> seriesNames = analysedMethods.stream().filter(JavaMethod::isActive).map(m -> m.getOdexOffsets().get(0)).collect(Collectors.toList());
+        List<String> seriesNames = analysedMethods.stream().filter(JavaMethod::isActive).map(JavaMethod::getShortName).collect(Collectors.toList());
+//        List<String> seriesNames = analysedMethods.stream().filter(JavaMethod::isActive).map(m -> m.getOdexOffsets().get(0)).collect(Collectors.toList());
+//        List<String> seriesNames = analysedMethods.stream().filter(JavaMethod::isActive).map(JavaMethod::getLogParserId).map(String::valueOf).collect(Collectors.toList());
         List<XYSeries> gtSeriesList = createDatasetGroundTruth(boundaries, seriesNames);
         List<XYSeries> prSeriesList = createDatasetPredictions(timings, seriesNames);
         gtSeriesList.addAll(prSeriesList);
@@ -675,7 +687,8 @@ public class ResultAnalyser {
         for (int i = 0; i < nX; i++) {
             List<Integer> loginTimes = new ArrayList<>(boundaries.get(i).keySet());
             int finalI = i;
-            loginTimes.forEach(t -> seriesList.get(finalI).add(t, Double.valueOf(boundaries.get(finalI).get(t) - 0.1)));
+//            loginTimes.forEach(t -> seriesList.get(finalI).add(t, Double.valueOf(boundaries.get(finalI).get(t) - 0.1)));
+            loginTimes.forEach(t -> seriesList.get(finalI).add(t, Double.valueOf(finalI - 0.1)));
         }
         return seriesList;
     }
