@@ -15,6 +15,8 @@ public class JavaMethod {
     private int size=0;
     private List<BoundaryTime> boundaryTimes = new ArrayList<>();
     private List<Integer> hitTimes = new ArrayList<>();
+    private List<JavaMethod> childMethods = new ArrayList<>();
+    private List<JavaMethod> parentMethods = new ArrayList<>();
 
 
 
@@ -126,7 +128,20 @@ public class JavaMethod {
         hitTimes.add(hitTime);
     }
 
+    public void addChild(JavaMethod child){
+        childMethods.add(child);
+    }
+    public void addParent(JavaMethod parent){
+        parentMethods.add(parent);
+    }
 
+    public List<JavaMethod> getChildMethods() {
+        return childMethods;
+    }
+
+    public List<JavaMethod> getParentMethods() {
+        return parentMethods;
+    }
 }
 
 class BoundaryTime{

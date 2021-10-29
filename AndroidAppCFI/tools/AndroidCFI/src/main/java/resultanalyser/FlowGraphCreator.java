@@ -1,5 +1,9 @@
 package resultanalyser;
 
+import org.apache.batik.transcoder.TranscoderException;
+import org.apache.batik.transcoder.TranscoderInput;
+import org.apache.batik.transcoder.TranscoderOutput;
+import org.apache.batik.transcoder.image.JPEGTranscoder;
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultDirectedGraph;
 import org.jgrapht.graph.DefaultEdge;
@@ -42,6 +46,7 @@ public final class FlowGraphCreator
             throws URISyntaxException,
             ExportException
     {
+
         Graph<String, DefaultEdge> stringGraph = createStringGraph();
 
         // note undirected edges are printed as: {<v1>,<v2>}
@@ -85,6 +90,7 @@ public final class FlowGraphCreator
         URI jgrapht = new URI("http://www.jgrapht.org");
 
         // add the vertices
+        g.addVertex(google);
         g.addVertex(google);
         g.addVertex(wikipedia);
         g.addVertex(jgrapht);
@@ -136,10 +142,12 @@ public final class FlowGraphCreator
         try {
 //            String cmd = "echo '" + writer.toString().replace("\"", "\\\"") + "' | dot -Tsvg > /home/ishadi/Desktop/output2.svg";
 //            String cmd = "echo 'digraph { a -> b }' | dot -Tsvg > "+PathManager.getGraphFolderPath()+"output2.svg";
-            String cmd = "dot -Tsvg "+PathManager.getConfigFolderPath()+"pp.out -o"+ PathManager.getConfigFolderPath()+"output2.svg" ;
+            String outFile = PathManager.getConfigFolderPath()+"output7.svg";
+            String cmd = "dot -Tsvg "+PathManager.getPredictionGraphFilePath()+" -o"+ outFile ;
 //            String cmd = "echo 'digraph { a -> b }' | dot -Tsvg -o"+ PathManager.getConfigFolderPath()+"output2.svg" ;
             RuntimeExecutor.runCommand(cmd, false);
-            RuntimeExecutor.showImage(PathManager.getConfigFolderPath()+"output2.svg");
+//            convertToJPEG(PathManager.getConfigFolderPath()+"output4.svg");
+            RuntimeExecutor.showImage(outFile);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -166,6 +174,8 @@ public final class FlowGraphCreator
         g.addVertex(v2);
         g.addVertex(v3);
         g.addVertex(v4);
+        g.addVertex(v4);
+        g.addVertex(v4);
 
         // add edges to create a circuit
         g.addEdge(v1, v2);
@@ -175,4 +185,31 @@ public final class FlowGraphCreator
 
         return g;
     }
+
+    static void convertToJPEG(String svgImage) throws IOException, TranscoderException {
+
+
+            // Create a JPEG transcoder
+            JPEGTranscoder t = new JPEGTranscoder();
+
+            // Set the transcoding hints.
+            t.addTranscodingHint(JPEGTranscoder.KEY_QUALITY,
+                    new Float(.8));
+
+            // Create the transcoder input.
+            String svgURI = new File(svgImage).toURL().toString();
+            TranscoderInput input = new TranscoderInput(svgURI);
+
+            // Create the transcoder output.
+            OutputStream ostream = new FileOutputStream(svgImage.replace("svg", "jpg"));
+            TranscoderOutput output = new TranscoderOutput(ostream);
+
+            // Save the image.
+            t.transcode(input, output);
+
+            // Flush and close the stream.
+            ostream.flush();
+            ostream.close();
+
+        }
 }

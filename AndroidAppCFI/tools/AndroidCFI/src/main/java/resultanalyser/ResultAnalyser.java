@@ -1,5 +1,6 @@
 package resultanalyser;
 
+import com.aspose.pdf.facades.PdfFileEditor;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartUtils;
 import org.jfree.chart.JFreeChart;
@@ -9,6 +10,12 @@ import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.category.DefaultCategoryDataset;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
+import org.jgrapht.Graph;
+import org.jgrapht.graph.DefaultEdge;
+import org.jgrapht.nio.Attribute;
+import org.jgrapht.nio.DefaultAttribute;
+import org.jgrapht.nio.ExportException;
+import org.jgrapht.nio.dot.DOTExporter;
 import util.ConfigManager;
 import util.PathManager;
 import util.RuntimeExecutor;
@@ -17,6 +24,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,7 +41,6 @@ public class ResultAnalyser {
     static final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
 
     static String title = "aspect-based";
-    static String backUpFolderName = "";
 
     static boolean isFilteringAddresses = false;
     static List<Integer> filterAddressIds = Arrays.asList(0);
@@ -71,12 +78,26 @@ public class ResultAnalyser {
 
     private static final int concatIndex = 1000000;
 
+    static boolean includeCFRules = true;
+
+    private static boolean fromBackup = false;
+    static String backUpFolderName = "1635314216118";
 
     public static void main(String[] args) {
         try {
             if (args.length > 0) {
+                fromBackup = true;
                 backUpFolderName = args[0];
                 System.out.println(backUpFolderName);
+            }
+            if(fromBackup && !backUpFolderName.isEmpty()){
+                backUpFolderName = PathManager.getDbFolderPath()+backUpFolderName+File.separator;
+                PathManager.setSideChannelDbPath(backUpFolderName+PathManager.sideChannelFileName);
+                PathManager.setGroundTruthDbPath(backUpFolderName+PathManager.groundTruthFileName);
+                PathManager.setLogPath(backUpFolderName+PathManager.logFileName);
+                PathManager.setOatFilePath(backUpFolderName+PathManager.oatFileName);
+                PathManager.setConfigFilePath(backUpFolderName+PathManager.configFileName);
+                PathManager.setToolConfigFilePath(backUpFolderName+PathManager.toolConfigFileName);
             }
             List<String> sideChannelLines = Files.lines(Paths.get(PathManager.getSideChannelDbPath()), StandardCharsets.ISO_8859_1).collect(Collectors.toList());
             List<String> groundTruthLines = Files.lines(Paths.get(PathManager.getGroundTruthDbPath()), StandardCharsets.ISO_8859_1).collect(Collectors.toList());
@@ -111,8 +132,11 @@ public class ResultAnalyser {
             List<JavaMethod> analysedMethods = getAnalysedMethods(odexToAppMethodIdMap, toolConfigMap, configMap);
             System.out.println("mapped methods\n>" + analysedMethods.stream().filter(JavaMethod::isActive).map(JavaMethod::getOdexName).collect(Collectors.joining("\n>")) + "\n");
             String graphName = generateGraph(groundTruthLines, filteredSideChannelLines, seriesNames, title, analysedMethods);
+            if(fromBackup){
+                return;
+            }
             executePythonScript();
-            backupData(graphName, backUpFolderName);
+            backupData(graphName);
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
@@ -124,8 +148,8 @@ public class ResultAnalyser {
     }
 
 
-    private static void backupData(String graphName, String backUpFolderName) {
-        backUpFolderName = backUpFolderName + System.currentTimeMillis();
+    private static void backupData(String graphName) {
+        backUpFolderName = ""+ System.currentTimeMillis();
         File backupPath = new File(PathManager.getDbFolderPath() + backUpFolderName);
         String backupPathString = PathManager.getDbFolderPath() + backUpFolderName + File.separator;
         backupPath.mkdir();
@@ -135,12 +159,18 @@ public class ResultAnalyser {
             Files.copy(new File(PathManager.getGroundTruthDbPath()).toPath(), new File(backupPathString + "ground_truth_full.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(PathManager.getProcessedRecordsPath()).toPath(), new File(backupPathString + "processedRecords.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(PathManager.getChartWorkerRecordsPath()).toPath(), new File(backupPathString + "chartWorkerRecords.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(new File(PathManager.getCfRulesFilePath()).toPath(), new File(backupPathString + "cfRules.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(new File(PathManager.getGroundTruthGraphFilePath()).toPath(), new File(backupPathString + "groundTruthGraph.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(new File(PathManager.getPredictionGraphFilePath()).toPath(), new File(backupPathString + "predictionGraph.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
 
             Files.copy(new File(PathManager.getLogPath()).toPath(), new File(backupPathString + "log.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(PathManager.getOatFilePath()).toPath(), new File(backupPathString + "oatdump.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
 
             Files.copy(new File(PathManager.getConfigFilePath()).toPath(), new File(backupPathString + "config.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(PathManager.getToolConfigFilePath()).toPath(), new File(backupPathString + "toolConfig.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+            Files.copy(new File(PathManager.getGraphFolderPath() + "groundTruthFLow.svg").toPath(), new File(backupPathString + "groundTruthFLow.svg").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(new File(PathManager.getGraphFolderPath() + "PredictedFLow.svg").toPath(), new File(backupPathString + "PredictedFLow.svg").toPath(), StandardCopyOption.REPLACE_EXISTING);
 
             Files.copy(new File(PathManager.getGraphFolderPath() + "heatmap.png").toPath(), new File(backupPathString + "heatmap.png").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(graphName).toPath(), new File(backupPathString + "scatterPlot.png").toPath(), StandardCopyOption.REPLACE_EXISTING);
@@ -152,7 +182,7 @@ public class ResultAnalyser {
 
     }
 
-    static List<JavaMethod> getAnalysedMethods(Map<Integer, Integer> odexToAppMethodIdMap, Map<String, String> toolConfigMap, Map<String, String> configMap) {
+    static List<JavaMethod> getAnalysedMethods(Map<Integer, Integer> odexToAppMethodIdMap, Map<String, String> toolConfigMap, Map<String, String> configMap) throws IOException {
         List<JavaMethod> methods = new ArrayList<>();
         Map<Integer, String> methodIdAdMapping = Arrays.stream(toolConfigMap.get("methodIdAdMapping").split("\\|"))
                 .filter(s -> s.contains("="))
@@ -190,6 +220,20 @@ public class ResultAnalyser {
         odexOffsets.remove(0);
         appOffsets.remove(0);
 
+        Map<String, List<String>> cfRuleMap = new HashMap<>();
+
+        if (includeCFRules) {
+            List<String> cfRules = Files.lines(Paths.get(PathManager.getCfRulesFilePath()), StandardCharsets.ISO_8859_1).collect(Collectors.toList());
+            Map<Integer, String> mNameIndMap = List.of(cfRules.get(0).split("\\|")).stream().collect(Collectors.toMap(
+                    s -> Integer.valueOf(s.split("-")[1]), s -> s.split("-")[0]
+            ));
+            cfRules.remove(0);
+            mNameIndMap.values().forEach(v -> cfRuleMap.put(v, new ArrayList<>()));
+            cfRules.forEach(l -> {
+                String[] splits = l.split("->");
+                cfRuleMap.get(mNameIndMap.get(Integer.valueOf(splits[0]))).add(mNameIndMap.get(Integer.valueOf(splits[1])));
+            });
+        }
 
         int curId = 0;
         for (int i = 0; i < odexOffsets.size(); i++) {
@@ -217,7 +261,22 @@ public class ResultAnalyser {
             jMethod.setActive(appId > -1);
             jMethod.setLogParserId(appId > -1 ? curId++ : -1);
 
+
             methods.add(jMethod);
+        }
+        if (includeCFRules) {
+            methods.stream()
+                    .filter(m -> cfRuleMap.keySet().stream().filter(s -> m.getAppName().contains("s")).anyMatch(k -> !cfRuleMap.get(k).isEmpty()))
+                    .forEach(m -> {
+                        cfRuleMap.entrySet().stream().filter(e -> m.getAppName().contains(e.getKey())).findAny().get().getValue()
+                                .stream().map(s -> methods.stream().filter(m1 -> m1.getAppName().contains(s)).findAny().get())
+                                .collect(Collectors.toList()).forEach(mC -> {
+                            m.addChild(mC);
+                            mC.addParent(m);
+                        });
+
+                    });
+
         }
 
         return methods;
@@ -232,7 +291,13 @@ public class ResultAnalyser {
 
         writeToFile(boundaries, timings);
         writeForChartWorker(boundaries, timings, seriesNames);
+        if (includeCFRules) {
+            generateCFCharts(boundaries, timings, analysedMethods);
+        }
         StatCalculator.calculateScoresForWindowCountBased(boundaries, timings, analysedMethods, ceilingVal);
+        if(fromBackup){
+            return "";
+        }
         String graphName = "";
         Map<Integer, List<Color>> colourMap = getColourLists(timings.size(), boundaries.size());
 
@@ -307,6 +372,7 @@ public class ResultAnalyser {
         }
         return graphName;
     }
+
 
     private static String createCombGraph(Map<Integer, Map<Integer, Integer>> tempTimings, Map<Integer, Map<Integer, Integer>> tempBoundaries,
                                           List<String> seriesNames, Map<Integer, List<Color>> colourMap, String graphName, List<JavaMethod> analysedMethods) throws IOException {
@@ -555,6 +621,74 @@ public class ResultAnalyser {
         return sideChannelLines.stream().map(line -> line.split("\\|")[2]).distinct().sorted().collect(Collectors.toList());
     }
 
+    private static void generateCFCharts(Map<Integer, Map<Integer, Integer>> boundaries, Map<Integer, Map<Integer, Integer>> timings,
+                                         List<JavaMethod> analysedMethods) throws IOException {
+        Map<Integer, JavaMethod> methodIdMap = analysedMethods.stream().collect(Collectors.toMap(JavaMethod::getLogParserId, jm -> jm));
+
+        writeDotGraphFile(methodIdMap, boundaries, PathManager.getGroundTruthGraphFilePath());
+        writeDotGraphFile(methodIdMap, timings, PathManager.getPredictionGraphFilePath());
+        renderHrefGraph(PathManager.getGroundTruthGraphFilePath(), PathManager.getGraphFolderPath()+"groundTruthFLow.svg");
+        renderHrefGraph(PathManager.getPredictionGraphFilePath(), PathManager.getGraphFolderPath()+"PredictedFLow.svg");
+
+                int a = 3;
+
+
+//        predicted flow
+    }
+
+    private static void writeDotGraphFile(Map<Integer, JavaMethod> methodIdMap, Map<Integer, Map<Integer, Integer>> methodTimings, String filePath) throws IOException {
+        List<Integer> timeKeys = methodTimings.keySet().stream()
+                .map(k -> new ArrayList<>(methodTimings.get(k).keySet())).collect(Collectors.toList()).stream()
+                .flatMap(List::stream)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+        //        ground truth flow
+
+        List<Map<JavaMethod, Integer>> methodSeq = timeKeys.stream().sequential()
+                .map(t -> methodTimings.keySet().stream().filter(mId -> methodTimings.get(mId).keySet().contains(t))
+//                        .map(methodIdMap::get)
+                        .collect(Collectors.toMap(methodIdMap::get, k -> t)))
+                .collect(Collectors.toList());
+
+        List<List<String>> graphNodeList = new ArrayList<>();
+        for (Map<JavaMethod, Integer> curMethodMap : methodSeq) {
+            for (JavaMethod curMethod : curMethodMap.keySet()) {
+
+//            JavaMethod curMethod = curMethodMap.
+                List<String> parents = curMethod.getParentMethods().stream().map(JavaMethod::getShortName).collect(Collectors.toList());
+                if (!parents.isEmpty()) {
+                    Optional<List<String>> parentList = graphNodeList.stream().filter(m -> parents.contains(getLastElement(m).split("_")[0])).findFirst();
+                    if (parentList.isPresent()) {
+                        parentList.get().add(curMethod.getShortName()+"_"+curMethodMap.get(curMethod));
+                        continue;
+                    }
+                }
+                graphNodeList.add(new ArrayList<>(List.of(curMethod.getShortName()+"_"+curMethodMap.get(curMethod))));
+            }
+        }
+
+        int counter = 0;
+        List<String> printLines = new ArrayList<>();
+        printLines.add("strict digraph G {");
+        for (List<String> nodeList : graphNodeList) {
+            int finalCounter = counter;
+            nodeList.forEach(n -> printLines.add(getGraphFormat(n, finalCounter)));
+//            printLines.add(getGraphFormat(nodeList.get(0), counter));
+            if (nodeList.size() > 1) {
+                IntStream.range(1, nodeList.size()).forEach(i -> printLines.add(nodeList.get(i - 1) + finalCounter + " -> " + nodeList.get(i) + finalCounter + ";"));
+            }
+            counter++;
+
+        }
+        printLines.add("}");
+
+        Files.write(Path.of(filePath), printLines, StandardCharsets.ISO_8859_1);
+    }
+
+    private static String getGraphFormat(String javaMethod, int c) {
+        return javaMethod + c + " [ label=\"" + javaMethod + "\" ];";
+    }
 
     private static void writeToFile(Map<Integer, Map<Integer, Integer>> boundaries, Map<Integer, Map<Integer, Integer>> timings) throws IOException {
 
@@ -762,6 +896,26 @@ public class ResultAnalyser {
         return combTitle;
 //        Runtime.getRuntime().exec("eog " + combTitle);
 
+    }
+
+    private static void renderHrefGraph(String graphFile, String outFile)
+            throws ExportException
+    {
+
+        try {
+//            String outFile = PathManager.getConfigFolderPath()+"output7.svg";
+            String cmd = "dot -Tsvg "+graphFile+" -o"+ outFile ;
+//            String cmd = "echo 'digraph { a -> b }' | dot -Tsvg -o"+ PathManager.getConfigFolderPath()+"output2.svg" ;
+            RuntimeExecutor.runCommand(cmd, false);
+//            RuntimeExecutor.showImage(outFile);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private static <T> T getLastElement(List<T> itemList) {
+        return itemList.get(itemList.size() - 1);
     }
 
 }

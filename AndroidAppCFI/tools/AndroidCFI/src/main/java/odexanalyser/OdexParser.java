@@ -49,7 +49,7 @@ public class OdexParser {
         beginStackMap = Integer.parseInt(configMap.get("beginStackMap"));
         targetLimit = Integer.parseInt(configMap.get("targetLimit"));
         packageNames = Arrays.stream(configMap.get("packageName").split("\\|"))
-                .map(s->s.concat("_aroundBody"))
+                .map(s -> s.concat("_aroundBody"))
                 .collect(Collectors.toList());
 
         toolConfigMap = ConfigManager.readConfigs(PathManager.getToolConfigFilePath());
@@ -68,11 +68,10 @@ public class OdexParser {
 
 //        List<String> methodList = new ArrayList<>(offsetMap.keySet());
         List<String> methodList;
-        if(looseOrder){
+        if (looseOrder) {
             methodList = looseOrder(new ArrayList<>(offsetMap.keySet()));
-        }
-        else {
-            methodList =new ArrayList<>(offsetMap.keySet());
+        } else {
+            methodList = new ArrayList<>(offsetMap.keySet());
         }
 
         String mNameIdMapping = IntStream.range(0, methodList.size()).mapToObj(i -> i + "=" + methodList.get(i)).collect(Collectors.joining("|")).replaceAll(" \\(dex_method_idx=[0-9]+\\)", "").replaceAll("[0-9]+: ", "");
@@ -163,7 +162,7 @@ public class OdexParser {
                     i = methodEndLineId;
                     continue;
                 }
-                methodName=methodName.replace("_aroundBody0", "");
+                methodName = methodName.replace("_aroundBody0", "");
                 int offsetInc = offsetIncs.getOrDefault(methodName, configOffsetInc);
                 int offsetMapStartIndex = 0;
 //                          verifying the method
@@ -179,7 +178,7 @@ public class OdexParser {
 //                if (methodWidth < 300) {
 //                    continue;
 //                }
-                System.out.println("methodWidth of "+methodName.split(":")[1].strip()+": " + methodWidth);
+                System.out.println("methodWidth of " + methodName.split(":")[1].strip() + ": " + methodWidth);
 
 
 //              inside a verified method
@@ -191,8 +190,13 @@ public class OdexParser {
 //                                  0x008137d4: b940021f	ldr wzr, [x16]
                         String ins = offsetLine.split("\t")[1].split(" ")[0].trim();
                         offset = offsetLine.split(":")[0].replace("0x00", "");
+                        String finalOffset = offset;
+//                        if (lines.subList(methodBeginId, methodEndLineId).stream().filter(l -> l.contains(finalOffset)).count() > 1)
+//                        {
+//                            continue;
+//                        }
                         BigInteger bigIntOffset = new BigInteger(offset, 16);
-                        if(curOffsets.stream().anyMatch(c->Math.abs(Integer.parseInt(bigIntOffset.subtract(c).toString(10)))<4500)){
+                        if (curOffsets.stream().anyMatch(c -> Math.abs(Integer.parseInt(bigIntOffset.subtract(c).toString(10))) < 4500)) {
 //                        if(!curOffsets.isEmpty() && Math.abs(Integer.parseInt(bigIntOffset.subtract(curOffsets.get(curOffsets.size()-1)).toString(10)))<4500){
                             continue;
                         }
@@ -222,7 +226,7 @@ public class OdexParser {
 
                 }
 //                i = Math.max(methodEndLineId, prevEndLine + 513);
-                i = methodEndLineId+512;
+                i = methodEndLineId + 512;
 //                i = methodEndLineId-10;
 //                i = prevEndLine+257;
 
@@ -325,7 +329,7 @@ public class OdexParser {
     }
 
 
-//    public static List<Integer> calcDistances(List<String> classOffsets) throws IOException {
+    //    public static List<Integer> calcDistances(List<String> classOffsets) throws IOException {
 //        List<BigInteger> asDec = classOffsets.stream().sequential().map(String::strip).map(i -> new BigInteger(i, 16)).collect(Collectors.toList());
 ////        asDec.stream().sequential().forEach(i -> System.out.print(" " + i + " "));
 //        List<BigInteger> asDecSorted = asDec.stream().sequential().sorted().collect(Collectors.toList());
@@ -372,8 +376,8 @@ public class OdexParser {
 //    }
     public static void calcDistances(List<String> classOffsets) throws IOException {
         List<BigInteger> asDec = classOffsets.stream().sequential().map(String::strip).map(i -> new BigInteger(i, 16)).collect(Collectors.toList());
-        System.out.println("offsets: "+asDec.stream().map(b->b.toString(16)).collect(Collectors.joining(",")));
-        System.out.println("distances between offsets: 0,"+ IntStream.range(1, asDec.size()).mapToObj(i->asDec.get(i).subtract(asDec.get(i-1)).toString(10))
+        System.out.println("offsets: " + asDec.stream().map(b -> b.toString(16)).collect(Collectors.joining(",")));
+        System.out.println("distances between offsets: 0," + IntStream.range(1, asDec.size()).mapToObj(i -> asDec.get(i).subtract(asDec.get(i - 1)).toString(10))
                 .collect(Collectors.joining(",")));
 //        IntStream.range(1, indexes.size()).forEach(i -> System.out.print((new BigInteger(classOffsets.get(indexes.indexOf(i)), 16))
 //                .subtract(new BigInteger(classOffsets.get(indexes.indexOf(i - 1)), 16)) + " "));
@@ -387,7 +391,7 @@ public class OdexParser {
         System.out.println("\n\nchecking sideChannel for scanning addresses ...");
         List<String> offsetsToBeScanned = new ArrayList<>(odexOffsets);
 
-        if(looseOrder){
+        if (looseOrder) {
             offsetsToBeScanned = looseOrder(offsetsToBeScanned);
         }
 
