@@ -53,15 +53,13 @@ public class AdbLogReader {
 
     public static int execCmdForLoop(String cmd) throws IOException, InterruptedException {
         int count = 0;
-        boolean isThresholdChecked = true;
+        boolean isThresholdChecked = false;
         Scanner s = new Scanner(Runtime.getRuntime().exec(cmd).getInputStream());
         String ot = s.nextLine();
         if(isThresholdChecked){
             ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "parseLogs", "1");
         }
         while (count < loopCount + 2) {
-
-
 
             if (!isThresholdChecked && ot.contains("adjust_threshold1 final threshold")) {
                 String threshold = ot.split(" threshold")[1].strip();
@@ -72,16 +70,10 @@ public class AdbLogReader {
                     ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "parseLogs", "0");
                     return -1;
                 }
-                ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "threshold", threshold);
+                ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "ceilVal", String.valueOf(Integer.parseInt(threshold.strip())+10));
                 System.out.println("LogReader: Updated threshold (" + threshold + ") from Log");
                 isThresholdChecked = true;
                 ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "parseLogs", "1");
-            }
-
-
-            if (count > 3 && !isThresholdChecked) {
-                System.out.println("LogReader: threshold wasn't logged");
-                return -1;
             }
 
             if (ot.contains("scanned offsets")) {

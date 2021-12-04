@@ -1,11 +1,13 @@
 package resultanalyser;
 
+import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
 public class JavaMethod {
     private String odexName;
     private String appName;
+    private String shortName="";
     private int odexMethodId;
     private int appMethodId;
     private int LogParserId;
@@ -115,9 +117,16 @@ public class JavaMethod {
     }
 
     public String getShortName(){
-        String[] splits = this.getAppName().split("\\(")[0].split("\\.");
-        return splits[splits.length-1];
+        if(shortName.isEmpty()){
+            String[] splits = this.getAppName().split("\\(")[0].split("\\.");
+            setShortName(splits[splits.length-1]);
+        }
+        return shortName;
 
+    }
+
+    private void setShortName(String shortName){
+        this.shortName = shortName;
     }
 
     public void addBoundaryTime(int startTime, int endTime){

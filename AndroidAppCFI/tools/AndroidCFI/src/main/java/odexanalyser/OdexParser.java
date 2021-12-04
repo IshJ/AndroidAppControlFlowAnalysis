@@ -16,41 +16,32 @@ import java.util.stream.IntStream;
 
 public class OdexParser {
     static List<String> packageNames = new ArrayList<>();
-
-    static boolean filteringAddresses = false;
-    final static List<Integer> scannedIds = Arrays.asList(0, 1, 2, 3, 4, 5, 6, 7, 8);
-
-    static boolean limitedTargets = true;
-    static int targetLimit = 2;
-
-    static boolean stackMapFiltering = true;
-    static int beginStackMap = 26;
-
-    static boolean startingFromAddress = false;
-    static int scanAddressBegin = 0;
-
-    static boolean perStackMap = false;
+    public final static String AROUND_BODY = "_aroundBody";
+    public final static String OPEN_BRACKET = "(";
 
     static Map<String, String> configMap = new HashMap<>();
     static Map<String, String> toolConfigMap = new HashMap<>();
 
     static boolean trackExecutingMethods = true;
     static boolean looseOrder = false;
+    static List<String> aroundBodyTags;
 
+    public static List<String> stats = new ArrayList<>();
 
     public static void main(String[] args) throws IOException {
 
         List<String> oatLines = Files.lines(Paths.get(PathManager.getOatFilePath()), StandardCharsets.ISO_8859_1)
                 .collect(Collectors.toList());
 
+        aroundBodyTags = IntStream.range(0, 1000).mapToObj(i -> AROUND_BODY + i + OPEN_BRACKET).collect(Collectors.toList());
 
         configMap = ConfigManager.readConfigs(PathManager.getConfigFilePath());
-        scanAddressBegin = Integer.parseInt(configMap.get("scanAddressBegin"));
-        beginStackMap = Integer.parseInt(configMap.get("beginStackMap"));
-        targetLimit = Integer.parseInt(configMap.get("targetLimit"));
+        ConfigManager.readMultiLineConfigs(configMap, PathManager.getConfigFilePath());
+
         packageNames = Arrays.stream(configMap.get("packageName").split("\\|"))
-                .map(s -> s.concat("_aroundBody"))
                 .collect(Collectors.toList());
+        //        ToDo: write to compare parameters in case of method overwrites
+        packageNames = packageNames.stream().map(m -> m.replace(".*", "").replace("(..)", "")).collect(Collectors.toList());
 
         toolConfigMap = ConfigManager.readConfigs(PathManager.getToolConfigFilePath());
 
@@ -58,7 +49,7 @@ public class OdexParser {
         Map<String, Integer> offsetIncs = new HashMap<>();
 
 
-        Map<String, ScannedMethod> offsetMap = usingMethodOffsets(oatLines, offsetIncs);
+        Map<String, ScannedMethod> offsetMap = usingMultipleMethodOffsets(oatLines, offsetIncs);
         if (offsetMap.isEmpty()) {
             return;
         }
@@ -66,7 +57,6 @@ public class OdexParser {
         System.out.println();
         System.out.println("Extracting addresses from odex ...");
 
-//        List<String> methodList = new ArrayList<>(offsetMap.keySet());
         List<String> methodList;
         if (looseOrder) {
             methodList = looseOrder(new ArrayList<>(offsetMap.keySet()));
@@ -76,24 +66,34 @@ public class OdexParser {
 
         String mNameIdMapping = IntStream.range(0, methodList.size()).mapToObj(i -> i + "=" + methodList.get(i)).collect(Collectors.joining("|")).replaceAll(" \\(dex_method_idx=[0-9]+\\)", "").replaceAll("[0-9]+: ", "");
         ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "methodIdNameMapping", mNameIdMapping);
-        String mAdMapping = IntStream.range(0, methodList.size()).mapToObj(i -> i + "=" + offsetMap.get(methodList.get(i)).getOffset()).collect(Collectors.joining("|"));
+        String mAdMapping = IntStream.range(0, methodList.size())
+                .mapToObj(i -> i + "=" + String.join(",", offsetMap.get(methodList.get(i)).getOffsets()))
+                .collect(Collectors.joining("|"));
         ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "methodIdAdMapping", mAdMapping);
         String mSizeMapping = IntStream.range(0, methodList.size()).mapToObj(i -> i + "=" + offsetMap.get(methodList.get(i)).getSize()).collect(Collectors.joining("|"));
         ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "methodIdSizeMapping", mSizeMapping);
 
 
 //        List<String> offsets = offsetMap.values().stream().map(ScannedMethod::getOffset).collect(Collectors.toList());
-        List<String> offsets = methodList.stream().map(offsetMap::get).map(ScannedMethod::getOffset).collect(Collectors.toList());
+        List<String> offsets = methodList.stream().map(offsetMap::get).map(ScannedMethod::getOffsets)
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
         System.out.println("\n");
         System.out.println("Calculating distances ...");
         calcDistances(offsets);
 
         List<BigInteger> asDec = offsets.stream().sequential().map(String::strip).map(i -> new BigInteger(i, 16)).collect(Collectors.toList());
         List<String> toSideChannel = asDec.stream().map(s -> s.toString(16)).collect(Collectors.toList());
-        verifyWithSideChannelAddresses(toSideChannel, scannedIds);
+        verifyWithSideChannelAddresses(toSideChannel);
 
         setExecOffset(oatLines);
         adjustThreshold(oatLines);
+
+        try {
+            Files.write(Path.of(PathManager.getStatsPath()), stats, StandardCharsets.ISO_8859_1);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
     }
 
@@ -107,8 +107,9 @@ public class OdexParser {
                 }).collect(Collectors.toList());
     }
 
-    public static Map<String, ScannedMethod> usingMethodOffsets(List<String> lines, Map<String, Integer> offsetIncs) {
+    public static Map<String, ScannedMethod> usingMultipleMethodOffsets(List<String> lines, Map<String, Integer> offsetIncs) {
 
+        int offsetsPerMethod = 1;
         Map<String, ScannedMethod> offsetMap = new LinkedHashMap<>();
         Map<String, Integer> methodSizeMap = new LinkedHashMap<>();
         List<BigInteger> curOffsets = new ArrayList<>();
@@ -121,11 +122,15 @@ public class OdexParser {
 
         int configOffsetInc = Integer.parseInt(configMap.get("offsetInc"));
         int offsetMapSize = Integer.parseInt(configMap.get("offsetMapSize"));
+        int distanceBetweenOffsets = Integer.parseInt(configMap.get("distanceBetweenOffsets"));
+
         boolean methodBFound = false;
 
         int offsetStart = 20;
         int methodWidth = 0;
         int prevEndLine = 0;
+        System.out.println("Method widths");
+        stats.add("Method widths");
         for (int i = 0; i < lines.size()
                 && offsetMap.size() < offsetMapSize
 //                && !methodBFound
@@ -150,19 +155,14 @@ public class OdexParser {
                 methodEndLineId--;
 //                  have found a method; need to verify whether it's relevant
                 String methodName = lines.get(methodBeginId).strip();
-                if (
-//                        ones you wanna skip
-                        packageNames.stream().noneMatch(methodName::contains)
-//                                || methodName.contains("aroundBody")
-//                                || methodName.contains("Lambda")
-//                                || methodName.contains("method1")
-//                                || methodName.contains("$")
-//                                || methodName.contains("$")
-                                || offsetMap.containsKey(methodName)) {
+                if (//  ones you wanna skip
+                        (!MethodResolver.isScannedMethod(methodName, packageNames))
+                                || aroundBodyTags.stream().noneMatch(methodName::contains)
+                ) {
                     i = methodEndLineId;
                     continue;
                 }
-                methodName = methodName.replace("_aroundBody0", "");
+                methodName = methodName.replace(aroundBodyTags.stream().filter(methodName::contains).findAny().get(), OPEN_BRACKET);
                 int offsetInc = offsetIncs.getOrDefault(methodName, configOffsetInc);
                 int offsetMapStartIndex = 0;
 //                          verifying the method
@@ -178,10 +178,12 @@ public class OdexParser {
 //                if (methodWidth < 300) {
 //                    continue;
 //                }
-                System.out.println("methodWidth of " + methodName.split(":")[1].strip() + ": " + methodWidth);
+                System.out.println(methodName.split(":")[1].split("\\(")[0].strip() + ": " + methodWidth);
+                stats.add(methodName.split(":")[1].split("\\(")[0].strip() + ": " + methodWidth);
 
 
 //              inside a verified method
+                int offsetCount = 0;
                 for (int offsetId = methodEndLineId - 1; offsetId > methodBeginId; offsetId = offsetId - offsetInc) {
 //                for (int offsetId = (methodBeginId+methodBeginId)/2; offsetId < methodEndLineId; offsetId = offsetId + offsetInc) {
                     String offsetLine = lines.get(offsetId).strip();
@@ -196,7 +198,7 @@ public class OdexParser {
 //                            continue;
 //                        }
                         BigInteger bigIntOffset = new BigInteger(offset, 16);
-                        if (curOffsets.stream().anyMatch(c -> Math.abs(Integer.parseInt(bigIntOffset.subtract(c).toString(10))) < 4500)) {
+                        if (curOffsets.stream().anyMatch(c -> Math.abs(Integer.parseInt(bigIntOffset.subtract(c).toString(10))) < distanceBetweenOffsets)) {
 //                        if(!curOffsets.isEmpty() && Math.abs(Integer.parseInt(bigIntOffset.subtract(curOffsets.get(curOffsets.size()-1)).toString(10)))<4500){
                             continue;
                         }
@@ -213,21 +215,24 @@ public class OdexParser {
 //                                                || offsetMap.size() < offsetMapSize
                             ) {
 
-                                offsetMap.put(methodName, new ScannedMethod(methodName, methodWidth, offset));
+                                offsetMap.putIfAbsent(methodName, new ScannedMethod(methodName, methodWidth));
+                                offsetMap.get(methodName).addOffset(offset);
                                 curOffsets.add(bigIntOffset);
                                 prevEndLine = offsetId;
+                                offsetCount++;
                             }
 //                            offsetId = offsetId + offsetInc;
-                            scanAddressBegin = offsetId;
                         }
-                        break;
+                        if (offsetCount >= offsetsPerMethod) {
+                            break;
+                        }
 
                     }
 
                 }
 //                i = Math.max(methodEndLineId, prevEndLine + 513);
-                i = methodEndLineId + 512;
-//                i = methodEndLineId-10;
+//                i = methodEndLineId + 512;
+                i = methodEndLineId - 10;
 //                i = prevEndLine+257;
 
 //                System.out.println("methodWidth="+methodWidth);
@@ -376,18 +381,24 @@ public class OdexParser {
 //    }
     public static void calcDistances(List<String> classOffsets) throws IOException {
         List<BigInteger> asDec = classOffsets.stream().sequential().map(String::strip).map(i -> new BigInteger(i, 16)).collect(Collectors.toList());
-        System.out.println("offsets: " + asDec.stream().map(b -> b.toString(16)).collect(Collectors.joining(",")));
-        System.out.println("distances between offsets: 0," + IntStream.range(1, asDec.size()).mapToObj(i -> asDec.get(i).subtract(asDec.get(i - 1)).toString(10))
-                .collect(Collectors.joining(",")));
+        String printString = "offsets: " + asDec.stream().map(b -> b.toString(16)).collect(Collectors.joining(","));
+        System.out.println(printString);
+        stats.add(printString);
+        printString = "distances between offsets: 0," + IntStream.range(1, asDec.size()).mapToObj(i -> asDec.get(i).subtract(asDec.get(i - 1)).toString(10))
+                .collect(Collectors.joining(","));
+        System.out.println(printString);
+        stats.add(printString);
 //        IntStream.range(1, indexes.size()).forEach(i -> System.out.print((new BigInteger(classOffsets.get(indexes.indexOf(i)), 16))
 //                .subtract(new BigInteger(classOffsets.get(indexes.indexOf(i - 1)), 16)) + " "));
-        System.out.println("address count: " + classOffsets.size());
+        printString = "address count: " + classOffsets.size();
+        System.out.println(printString);
+        stats.add(printString);
         List<String> toSideChannel = asDec.stream().map(s -> s.toString(16)).collect(Collectors.toList());
-        verifyWithSideChannelAddresses(toSideChannel, scannedIds);
+        verifyWithSideChannelAddresses(toSideChannel);
 
     }
 
-    public static void verifyWithSideChannelAddresses(List<String> odexOffsets, List<Integer> scanIds) throws IOException {
+    public static void verifyWithSideChannelAddresses(List<String> odexOffsets) throws IOException {
         System.out.println("\n\nchecking sideChannel for scanning addresses ...");
         List<String> offsetsToBeScanned = new ArrayList<>(odexOffsets);
 
@@ -435,12 +446,11 @@ public class OdexParser {
 class ScannedMethod {
     final private String name;
     final private Integer size;
-    final private String offset;
+    final private List<String> offsets = new ArrayList<>();
 
-    public ScannedMethod(String name, Integer size, String offset) {
+    public ScannedMethod(String name, Integer size) {
         this.name = name;
         this.size = size;
-        this.offset = offset;
     }
 
     public String getName() {
@@ -451,8 +461,12 @@ class ScannedMethod {
         return size;
     }
 
-    public String getOffset() {
-        return offset;
+    public List<String> getOffsets() {
+        return offsets;
+    }
+
+    public void addOffset(String offset) {
+        offsets.add(offset);
     }
 }
 

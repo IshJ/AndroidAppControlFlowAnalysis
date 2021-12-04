@@ -29,12 +29,15 @@ public class PathManager {
 
     static String addressStatsOut = metricsFolderPath + "addressStats.out";
     static String methodStatsOut = metricsFolderPath + "methodStats.out";
+    static String statsPath = metricsFolderPath + "resultAnalysis.out";
 
     static String toolConfigFilePath = configFolderPath + "toolConfig.out";
     public final static String toolConfigFileName =  "toolConfig.out";
     static String configFilePath = configFolderPath + "config.out";
     public final static String configFileName = "config.out";
     static String cfRulesFilePath = configFolderPath + "cfRules.out";
+    static String scannedMethodsFilePath = configFolderPath + "scannedMethods.out";
+
 
     static String groundTruthGraphFilePath = configFolderPath + "groundTruthGraph.out";
     static String predictionGraphFilePath = configFolderPath + "predictionGraph.out";
@@ -83,6 +86,10 @@ public class PathManager {
         return chartWorkerRecordsPath;
     }
 
+    public static String getStatsPath() {
+        return statsPath;
+    }
+
     public static String getLogPath() {
         return logPath;
     }
@@ -105,6 +112,10 @@ public class PathManager {
 
     public static String getConfigFilePath() {
         return configFilePath;
+    }
+
+    public static String getScannedMethodsFilePath() {
+        return scannedMethodsFilePath;
     }
 
     public static String getCfRulesFilePath() {

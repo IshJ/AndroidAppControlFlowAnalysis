@@ -8,6 +8,7 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class ConfigManager {
 
@@ -15,6 +16,15 @@ public class ConfigManager {
         return Files.lines(Paths.get(configFilePath), StandardCharsets.ISO_8859_1).collect(Collectors.toList())
                 .stream().filter(l -> !l.contains("//") && l.contains(":"))
                 .collect(Collectors.toMap(s->s.split(":")[0], s-> s.split(":")[1]));
+    }
+
+    public static void readMultiLineConfigs(Map<String, String> configMap, String configFilePath) throws IOException {
+        List<String> configLines = Files.lines(Paths.get(configFilePath), StandardCharsets.ISO_8859_1).collect(Collectors.toList());
+        IntStream.range(0, configLines.size()).filter(i->configLines.get(i).contains("<Multiline>")).forEach(i->{
+            int start=i+1;
+            int end = IntStream.range(start+1, configLines.size()).filter(j->"</Multiline>".equals(configLines.get(j))).findFirst().getAsInt();
+            configMap.put(configLines.get(i-1), String.join("|",configLines.subList(start, end) ));
+        });
     }
 
     public static boolean insertConfig(String configFilePath, String key, String value){

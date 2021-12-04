@@ -1,100 +1,81 @@
 package resultanalyser;
 
 import util.PathManager;
+import util.PrettyTablePrinter;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import static resultanalyser.ResultAnalyser.*;
 
 public class StatCalculator {
 
     public static void calculateScoresForWindowCountBased(Map<Integer, Map<Integer, Integer>> boundaries, Map<Integer, Map<Integer, Integer>> timings,
-                                                          List<JavaMethod> analysedMethods, int threshold) {
+                                                          List<JavaMethod> analysedMethods, int threshold, Map<Integer, Integer> timingToBoundary) {
 
         Map<Integer, String> revMIdMapping = analysedMethods.stream().filter(JavaMethod::isActive).collect(Collectors.toMap(JavaMethod::getLogParserId, JavaMethod::getShortName));
+        Map<Integer, Integer> durationMap = new HashMap<>();
 
-        System.out.println(IntStream.range(0, 79).mapToObj(i -> "-").collect(Collectors.joining()));
-
-        System.out.format("%8s %8s %8s %8s %8s %8s %4s\n", "method_id|", "address_id|", "ground_truth_count|"
-                , "hit_count|", "precision|", "recall|", "f1");
-        System.out.println(IntStream.range(0, 79).mapToObj(i -> "-").collect(Collectors.joining()));
-
-//        System.out.println("method_id|address_id|ground_truth_count|hit_count|precision|recall|f1".replace("|","\t"));
+        for (Integer mId : boundaries.keySet()) {
+            int medianDuration = 0;
+            if (boundaries.get(mId).size() > 1) {
+                medianDuration = boundaries.get(mId).entrySet().stream()
+                        .map(e -> e.getValue() - e.getKey()).sorted().collect(Collectors.toList())
+                        .get(boundaries.get(mId).size() / 2 - 1);
+            } else {
+                medianDuration = boundaries.get(mId).get(0);
+            }
+            durationMap.put(mId,medianDuration);
+        }
 
         for (int m = 0; m < boundaries.size(); m++) {
-                List<Integer> scanTimings = timings.get(m).keySet().stream()
+            List<Integer> scanTimings = timings.get(m).keySet().stream()
 //                        .filter(k -> {
 //                                    int timing = timings.get(finalScAdId).get(k);
 //                                    return timing > 5 && timing < threshold;
 //                                }
 //                        )
-                        .sorted().collect(Collectors.toList());
+                    .sorted().collect(Collectors.toList());
 //                if (scanTimings.isEmpty()) {
 //                    formatAndWriteToFile(revMIdMapping.get(m), scAdId, boundaryStartTimings.size(), 0, 0, 0, 0);
 //                    continue;
 //                }
-                long truePositive = 0;
-                long falsePositive = 0;
-                int trueNegative = 0;
-                long falseNegative = 0;
+            long truePositive = 0;
+            long truePositive1 = 0;
+            long falsePositive = 0;
+            int trueNegative = 0;
+            long falseNegative = 0;
 
-                List<Map.Entry<Integer, Integer>> entrySet = new ArrayList<>(boundaries.get(m).entrySet());
-
-
-                truePositive = scanTimings.stream().filter(st -> entrySet.stream().anyMatch(es -> st >= es.getKey() && st <= es.getValue())).count();
-                falsePositive = scanTimings.size()-truePositive;
-
-                falseNegative = entrySet.stream().filter(es-> scanTimings.stream().noneMatch(st-> st >= es.getKey() && st <= es.getValue())).count();
+            List<Map.Entry<Integer, Integer>> entrySet = new ArrayList<>(boundaries.get(timingToBoundary.get(m)).entrySet());
 
 
-//                if (scanTimings.stream().anyMatch(st -> entrySet.stream().anyMatch(es -> st >= es.getKey() && st <= es.getValue()))) {
-//                    truePositive++;
-//                }else {
-//                    falsePositive++;
-//                }
-//
-//
-//
-//
-//
-//                for (int mTime = 0; mTime < boundaryStartTimings.size(); mTime++) {
-//                    int finalMTime = mTime;
-//                    if (scanTimings.stream().anyMatch(i -> i > boundaryStartTimings.get(finalMTime) - 1200 && i < boundaryEndTimings.get(finalMTime) + 1200)) {
-//                        truePositive++;
-//                    }
-//                }
-//
-//                List<Integer> mergedTimings = new ArrayList<>();
-//                mergedTimings.add(scanTimings.get(0));
-//                Integer mergeListTop = scanTimings.get(0);
-//                for (Integer scanTime : scanTimings) {
-//                    if (scanTime - mergeListTop > 200) {
-//                        mergedTimings.add(scanTime);
-//                        mergeListTop = scanTime;
-//                    }
-//                }
-//                int falsePositive = mergedTimings.size() > truePositive ? mergedTimings.size() - truePositive : 0;
-//                int falseNegative = boundaryStartTimings.size() > mergedTimings.size() ? boundaryStartTimings.size() - mergedTimings.size() : 0;
+            truePositive = entrySet.stream().filter(es-> scanTimings.stream().anyMatch(st-> st >= es.getKey() && st <= es.getValue())).count();
+            truePositive1 = scanTimings.stream().filter(st -> entrySet.stream().anyMatch(es -> st >= es.getKey() && st <= es.getValue())).count();
+            falsePositive = scanTimings.size() - truePositive1;
 
-                double precision = getPrecision(truePositive, falsePositive);
-                double recall = getRecall(truePositive, falseNegative);
-                double f1Score = getF1(precision, recall);
+            falseNegative = entrySet.stream().filter(es -> scanTimings.stream().noneMatch(st -> st >= es.getKey() && st <= es.getValue())).count();
 
-                formatAndWriteToFile(m, revMIdMapping.get(m), entrySet.size(), scanTimings.size(), precision, recall, f1Score);
+            double precision = getPrecision(truePositive, falsePositive);
+            double recall = getRecall(truePositive, falseNegative);
+            double f1Score = getF1(precision, recall);
 
+            tableRows.add(new StringJoiner(columnSeparator)
+                    .add(String.valueOf(m))
+                    .add(revMIdMapping.get(m))
+                    .add(String.valueOf(durationMap.get(m)))
+                    .add(String.valueOf(entrySet.size()))
+                    .add(String.valueOf(scanTimings.size()))
+                    .add(String.format("%.2f", precision))
+                    .add(String.format("%.2f", recall))
+                    .add(String.format("%.2f", f1Score)).toString()
+            );
         }
-        try {
-            Files.write(Paths.get(PathManager.getAddressStatsOut()), "===========\n".getBytes(), StandardOpenOption.APPEND);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+
     }
 
     static double getPrecision(long truePositive, long falsePositive) {
@@ -110,15 +91,13 @@ public class StatCalculator {
 
     }
 
-    private static void formatAndWriteToFile(int mId, String mName, int boundaryStartTimingsSize, int mergedTimingsSize, double precision, double recall, double f1Score) {
-        String result = mId + "," + mName + "," + boundaryStartTimingsSize + "," + mergedTimingsSize + ","
-                + String.format("%.2f", precision) + "," + String.format("%.2f", recall) + "," + String.format("%.2f", f1Score) + "\n";
-        System.out.format("%8d %8s %22d %8d %8.2f %10.2f %6.2f\n", mId, mName, boundaryStartTimingsSize, mergedTimingsSize,
-                precision, recall, f1Score);
-        System.out.println(IntStream.range(0, 79).mapToObj(i -> "-").collect(Collectors.joining()));
+    public static void printPrintAndWrite(List<String> rows) {
+        List<String> headers = Arrays.asList("method id", "method name","duration estimate", "ground truth count"
+                , "hit count", "precision", "recall", "f1");
+        List<String> prettyRows = PrettyTablePrinter.printPrettyTable(headers, rows, columnSeparator);
         try {
 
-            Files.write(Paths.get(PathManager.getAddressStatsOut()), result.getBytes(), StandardOpenOption.APPEND);
+            Files.write(Paths.get(PathManager.getStatsPath()), prettyRows, StandardOpenOption.APPEND);
         } catch (IOException e) {
             e.printStackTrace();
         }
