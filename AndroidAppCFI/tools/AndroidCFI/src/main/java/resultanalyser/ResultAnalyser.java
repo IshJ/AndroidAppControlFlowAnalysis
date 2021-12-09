@@ -154,7 +154,7 @@ public class ResultAnalyser {
 
                 List<String> formattedRows = getFormattedTable(tableRows);
                 stats.addAll(formattedRows);
-                Files.write(Path.of(PathManager.getStatsPath()), stats, StandardCharsets.ISO_8859_1, StandardOpenOption.WRITE);
+                Files.write(Path.of(PathManager.getStatsPath()), stats, StandardCharsets.ISO_8859_1, StandardOpenOption.TRUNCATE_EXISTING);
 
 
                 IntStream.range(0, formattedRows.size()).filter(i-> i< formattedRows.size() && formattedRows.get(i).contains("+")).forEach(formattedRows::remove);
