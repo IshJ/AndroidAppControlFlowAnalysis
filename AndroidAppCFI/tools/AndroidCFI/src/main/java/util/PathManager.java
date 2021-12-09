@@ -30,6 +30,8 @@ public class PathManager {
     static String addressStatsOut = metricsFolderPath + "addressStats.out";
     static String methodStatsOut = metricsFolderPath + "methodStats.out";
     static String statsPath = metricsFolderPath + "resultAnalysis.out";
+    static String odexStatsPath = metricsFolderPath + "odexStats.out";
+    static String excelFormatDataPath = metricsFolderPath + "excelFormatData.out";
 
     static String toolConfigFilePath = configFolderPath + "toolConfig.out";
     public final static String toolConfigFileName =  "toolConfig.out";
@@ -39,8 +41,8 @@ public class PathManager {
     static String scannedMethodsFilePath = configFolderPath + "scannedMethods.out";
 
 
-    static String groundTruthGraphFilePath = configFolderPath + "groundTruthGraph.out";
-    static String predictionGraphFilePath = configFolderPath + "predictionGraph.out";
+    static String groundTruthGraphFilePath = graphFolderPath + "groundTruthGraph.out";
+    static String predictionGraphFilePath = graphFolderPath + "predictionGraph.out";
 
     public static String getRootFolderPath() {
         return rootFolderPath;
@@ -88,6 +90,14 @@ public class PathManager {
 
     public static String getStatsPath() {
         return statsPath;
+    }
+
+    public static String getOdexStatsPath() {
+        return odexStatsPath;
+    }
+
+    public static String getExcelFormatDataPath() {
+        return excelFormatDataPath;
     }
 
     public static String getLogPath() {

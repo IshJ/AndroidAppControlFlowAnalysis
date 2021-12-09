@@ -30,7 +30,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static resultanalyser.StatCalculator.printPrintAndWrite;
+import static resultanalyser.StatCalculator.getFormattedTable;
 
 public class ResultAnalyser {
     static final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
@@ -75,7 +75,7 @@ public class ResultAnalyser {
 
     static boolean includeCFRules = false;
 
-    private static boolean fromBackup = true;
+    private static boolean fromBackup = false;
     static String backUpFolderName = "1638502438846_2000";
 
     private static boolean backUpFiles = true;
@@ -119,6 +119,9 @@ public class ResultAnalyser {
             Map<String, String> configMap = ConfigManager.readConfigs(PathManager.getConfigFilePath());
             ceilingVal = Integer.parseInt(toolConfigMap.get("ceilVal"));
             floorVal = Integer.parseInt(toolConfigMap.get("floorVal"));
+//            combining method maps
+            String combinedMethodMapString = toolConfigMap.keySet().stream().sorted().filter(k->k.startsWith("MethodMap")).map(toolConfigMap::get).collect(Collectors.joining());
+            toolConfigMap.put("MethodMap",combinedMethodMapString );
 
             filterSideChannelRecords(sideChannelLines, groundTruthLines, aroundGroundTruths, hitCounterBased);
 
@@ -148,6 +151,19 @@ public class ResultAnalyser {
             String graphName = generateGraph(groundTruthLines, filteredSideChannelLines, seriesNames, title, analysedMethods);
             try {
                 executePythonScript();
+
+                List<String> formattedRows = getFormattedTable(tableRows);
+                stats.addAll(formattedRows);
+                Files.write(Path.of(PathManager.getStatsPath()), stats, StandardCharsets.ISO_8859_1, StandardOpenOption.WRITE);
+
+
+                IntStream.range(0, formattedRows.size()).filter(i-> i< formattedRows.size() && formattedRows.get(i).contains("+")).forEach(formattedRows::remove);
+                IntStream.range(0, formattedRows.size()).forEach(i->formattedRows.set(i, formattedRows.get(i).substring(2).replace(" | ",",").replace("|","")));
+                System.out.println("###");
+                formattedRows.forEach(System.out::println);
+                Files.write(Path.of(PathManager.getExcelFormatDataPath()), formattedRows, StandardCharsets.ISO_8859_1, StandardOpenOption.TRUNCATE_EXISTING);
+
+
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -157,15 +173,6 @@ public class ResultAnalyser {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
-        try {
-            Files.write(Path.of(PathManager.getStatsPath()), stats, StandardCharsets.ISO_8859_1, StandardOpenOption.APPEND);
-            printPrintAndWrite(tableRows);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
     }
 
     private static void executePythonScript() throws IOException, InterruptedException {
@@ -175,6 +182,7 @@ public class ResultAnalyser {
 
     private static void backupData(String graphName) {
         backUpFolderName = "" + System.currentTimeMillis();
+        System.out.println(backUpFolderName);
         File backupPath = new File(PathManager.getDbFolderPath() + backUpFolderName);
         String backupPathString = PathManager.getDbFolderPath() + backUpFolderName + File.separator;
         backupPath.mkdir();
@@ -199,9 +207,9 @@ public class ResultAnalyser {
 
             Files.copy(new File(PathManager.getGraphFolderPath() + "heatmap.png").toPath(), new File(backupPathString + "heatmap.png").toPath(), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(new File(graphName).toPath(), new File(backupPathString + "scatterPlot.png").toPath(), StandardCopyOption.REPLACE_EXISTING);
-            Files.copy(new File(graphName).toPath(), new File(backupPathString + "scatterPlot.png").toPath(), StandardCopyOption.REPLACE_EXISTING);
 
             Files.copy(new File(PathManager.getStatsPath()).toPath(), new File(backupPathString + "resultAnalysis.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(new File(PathManager.getExcelFormatDataPath()).toPath(), new File(backupPathString + "excelFormatData.out").toPath(), StandardCopyOption.REPLACE_EXISTING);
 
 
         } catch (IOException e) {
@@ -304,9 +312,7 @@ public class ResultAnalyser {
                         });
 
                     });
-
         }
-
         return methods;
     }
 
@@ -350,62 +356,7 @@ public class ResultAnalyser {
         timeKeys.remove(timeKeys.size() - 1);
 
         try {
-            Map<Integer, Map<Integer, Integer>> tempTimings = new HashMap<>();
-            Map<Integer, Map<Integer, Integer>> tempBoundaries = new HashMap<>();
-            List<String> graphNames = new ArrayList<>();
-            if (isFilteringMethods) {
-                IntStream.range(0, filterMethodIds.size()).forEach(i -> tempBoundaries.put(i, new HashMap<>()));
-            } else {
-                boundaries.keySet().forEach(i -> tempBoundaries.put(i, new HashMap<>()));
-            }
-
-            if (allAddressesInOneGraph) {
-                if (isFilteringAddresses) {
-                    IntStream.range(0, filterAddressIds.size()).forEach(i -> tempTimings.put(i, new HashMap<>()));
-                } else {
-                    timings.keySet().forEach(i -> tempTimings.put(i, new HashMap<>()));
-
-                }
-            } else {
-                tempTimings.put(0, new HashMap<>());
-            }
-
-            int graphSize = timeKeys.size() / splitCount;
-            for (int i = 0; i < splitCount; i++) {
-                List<Integer> keys = timeKeys.subList(i * graphSize, (i + 1) * graphSize);
-                if (isFilteringMethods) {
-                    IntStream.range(0, filterMethodIds.size()).forEach(bkey ->
-                            keys.forEach(k -> tempBoundaries.get(timingToBoundary.get(bkey)).put(k, filterMethodIds.get(bkey))));
-                    tempTimings.keySet().forEach(tkey -> keys.forEach(k -> tempTimings.get(tkey).put(k, timings.get(filterAddressIds.get(tkey)).get(k))));
-
-                } else {
-                    tempBoundaries.keySet()
-                            .forEach(bkey -> boundaries.get(bkey).keySet()
-                                    .forEach(k -> tempBoundaries.get(bkey).put(k, boundaries.get(bkey).get(k))));
-                    tempTimings.keySet()
-                            .forEach(tkey -> timings.get(tkey).keySet()
-                                    .forEach(k -> tempTimings.get(tkey).put(k, timings.get(tkey).get(k))));
-                }
-
-                graphName = PathManager.getGraphFolderPath() + title + i;
-                if (splitCount == 1 && !combineGraphs) {
-                    graphName = PathManager.getGraphFolderPath() + title + i;
-                }
-
-                graphName = createCombGraph(tempTimings, tempBoundaries, colourMap, graphName, analysedMethods, timingToBoundary);
-                if (combineGraphs) {
-                    graphNames.add(graphName);
-                }
-
-                tempBoundaries.keySet().forEach(k -> tempBoundaries.get(k).clear());
-                tempTimings.keySet().forEach(k -> tempTimings.get(k).clear());
-
-            }
-            if (combineGraphs) {
-                graphName = combineGraphsHr(graphNames);
-            }
-
-
+                graphName = createCombGraph(timings, boundaries, colourMap, analysedMethods, timingToBoundary);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -413,12 +364,14 @@ public class ResultAnalyser {
     }
 
 
-    private static String createCombGraph(Map<Integer, Map<Integer, Integer>> tempTimings, Map<Integer, Map<Integer, Integer>> tempBoundaries,
-                                          Map<Integer, List<Color>> colourMap, String graphName, List<JavaMethod> analysedMethods, Map<Integer, Integer> timingToBoundary) throws IOException {
-//        ChartWorker.createTimeLine(tempTimings, tempBoundaries, analysedMethods);
-        JFreeChart chartGt = createCombinedMap(tempTimings, tempBoundaries, colourMap, analysedMethods, timingToBoundary);
-        graphName = graphName + "_gt_" + System.currentTimeMillis() + ".png";
-        ChartUtils.saveChartAsPNG(new File(graphName), chartGt, 5000, 800);
+    private static String createCombGraph(Map<Integer, Map<Integer, Integer>> timings, Map<Integer, Map<Integer, Integer>> boundaries,
+                                          Map<Integer, List<Color>> colourMap, List<JavaMethod> analysedMethods, Map<Integer, Integer> timingToBoundary) throws IOException {
+        JFreeChart chartGt = createCombinedMap(timings, boundaries, colourMap, analysedMethods, timingToBoundary);
+        String graphName = PathManager.getGraphFolderPath() + title+ System.currentTimeMillis() + ".png";
+        int width=5000;
+        int height =(5+(int)analysedMethods.stream().filter(JavaMethod::isActive).count())*3000/50;
+
+        ChartUtils.saveChartAsPNG(new File(graphName), chartGt, 5000, height);
         return graphName;
     }
 
@@ -451,15 +404,7 @@ public class ResultAnalyser {
             if (!boundaries.containsKey(methodId)) {
                 boundaries.put(methodId, new HashMap<>());
             }
-
-//          adjustment for overlapping
-//            if (prevEnd == startTimingCount) {
-//                startTimingCount += 2;
-//            }
-//            boundaries.get(methodId).put((startTimingCount+endTimingCount)/2, methodId);
-//            boundaries.get(methodId).put(startTimingCount, 0);
             boundaries.get(methodId).put(startTimingCount, endTimingCount);
-//            boundaries.get(methodId).put(endTimingCount, 1);
 
         }
 
@@ -507,7 +452,7 @@ public class ResultAnalyser {
         timings.keySet().forEach(m -> freqFilterMap.put(m, timings.get(m).values().stream().count()));
         freqFilterMap.keySet().stream().map(m -> "address " + m + " -> " + freqFilterMap.get(m) + " hits").forEach(System.out::println);
 
-        System.out.println("\ndone parsing timings\n");
+        System.out.println("done parsing timings\n");
         return timings;
     }
 
@@ -871,7 +816,7 @@ public class ResultAnalyser {
 
         gtSeriesList.forEach(dataset::addSeries);
         JFreeChart chart = ChartFactory.createScatterPlot(
-                "Ground Truth Binary Map",
+                "Predictions",
                 "Thread Counter Value", "Method Id", dataset);
 
         XYPlot plot = chart.getXYPlot();
@@ -892,7 +837,7 @@ public class ResultAnalyser {
                         c = Color.red;
                         s = ShapeUtilities.createDiagonalCross(3, 1);
                         plot.getRendererForDataset(plot.getDataset(0)).setSeriesShape(i, s);
-                    } else if (seriesName.startsWith("m_b")) {
+                    } else if (seriesName.startsWith("m_boundary")) {
                         c = Color.lightGray;
                         plot.getRendererForDataset(plot.getDataset(0)).setSeriesShape(i, s);
                     } else c = Color.blue;
@@ -920,16 +865,16 @@ public class ResultAnalyser {
         List<Integer> boundaryKeys = boundaries.keySet().stream().sorted().collect(Collectors.toList());
 
 
-        List<XYSeries> seriesList = boundaryKeys.stream().map(i -> new XYSeries("m_" + seriesNames.get(i).split("_")[0])).collect(Collectors.toList());
-        List<XYSeries> seriesListBoundary = boundaryKeys.stream().map(i -> new XYSeries("m_boundary_" + seriesNames.get(i).split("_")[0])).collect(Collectors.toList());
+        List<XYSeries> seriesList = boundaryKeys.stream().map(i -> new XYSeries("m_" + seriesNames.get(i))).collect(Collectors.toList());
+        List<XYSeries> seriesListBoundary = boundaryKeys.stream().map(i -> new XYSeries("m_boundary_" + seriesNames.get(i))).collect(Collectors.toList());
 
         for (int i = 0; i < nX; i++) {
             int boundaryKey = boundaryKeys.get(i);
             int finalI = i;
             List<Integer> loginTimes = new ArrayList<>(boundaries.get(boundaryKey).keySet());
             List<Integer> loginTimesBoundary = boundaries.get(boundaryKey).keySet().stream()
-                    .map(k -> IntStream.range(k, boundaries.get(boundaryKey).get(k))
-                            .filter(x -> x % 1 == 0)
+                    .map(k -> IntStream.range(k+1, boundaries.get(boundaryKey).get(k))
+                            .filter(x -> x % (inMs ? 1 : 200) == 0)
                             .boxed().collect(Collectors.toList()))
                     .collect(Collectors.toList())
                     .stream()
@@ -1045,7 +990,7 @@ public class ResultAnalyser {
         return itemList.get(itemList.size() - 1);
     }
 
-    public static void printResult(String text){
+    public static void printResult(String text) {
         System.out.println(text);
         stats.add(text);
     }

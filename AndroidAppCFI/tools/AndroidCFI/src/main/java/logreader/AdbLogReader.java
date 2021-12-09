@@ -15,8 +15,6 @@ import java.util.stream.Collectors;
 
 public class AdbLogReader {
 
-    static int loopCount = 16;
-    static final String methodScanTag = "#7_0#";
 
     static final int FILTER_THRESHOLD = 1000;
     static final int ADJUSTED_FILTER_THRESHOLD = 100;
@@ -26,8 +24,6 @@ public class AdbLogReader {
     public static void main(String[] args) throws IOException, InterruptedException {
 
         configMap = ConfigManager.readConfigs(PathManager.getConfigFilePath());
-
-        loopCount = Integer.parseInt(Objects.requireNonNull(configMap.get("interLoopCount"))) + 1;
 
         if (args.length > 0) {
             execCmd("adb logcat | grep \"odex copied\"");
@@ -56,10 +52,10 @@ public class AdbLogReader {
         boolean isThresholdChecked = false;
         Scanner s = new Scanner(Runtime.getRuntime().exec(cmd).getInputStream());
         String ot = s.nextLine();
-        if(isThresholdChecked){
+        if (isThresholdChecked) {
             ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "parseLogs", "1");
         }
-        while (count < loopCount + 2) {
+        while (true) {
 
             if (!isThresholdChecked && ot.contains("adjust_threshold1 final threshold")) {
                 String threshold = ot.split(" threshold")[1].strip();
@@ -70,11 +66,12 @@ public class AdbLogReader {
                     ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "parseLogs", "0");
                     return -1;
                 }
-                ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "ceilVal", String.valueOf(Integer.parseInt(threshold.strip())+10));
+                ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "ceilVal", String.valueOf(Integer.parseInt(threshold.strip()) + 10));
                 System.out.println("LogReader: Updated threshold (" + threshold + ") from Log");
                 isThresholdChecked = true;
                 ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "parseLogs", "1");
             }
+
 
             if (ot.contains("scanned offsets")) {
                 String offsets = ot.split("offsets:")[1];
@@ -82,14 +79,10 @@ public class AdbLogReader {
                 System.out.println("LogReader: Updated offsets from Log");
             }
 
-            if (ot.contains(methodScanTag)) {
-                System.out.println("count " + count);
-                count++;
-            }
-
-            if (ot.contains("MethodMap:")) {
-                String methodMap = ot.split("MethodMap:")[1];
-                ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), "MethodMap", methodMap);
+            if (ot.contains("MethodMap")) {
+                String methodMapName = "MethodMap" + ot.split("MethodMap")[1].split(":")[0];
+                String methodMap = ot.split(methodMapName + ":")[1];
+                ConfigManager.insertConfig(PathManager.getToolConfigFilePath(), methodMapName, methodMap);
                 System.out.println("LogReader: Updated MethodMap from Log");
             }
 
@@ -101,11 +94,8 @@ public class AdbLogReader {
                 System.out.println("LogReader: threshold wasn't logged");
                 return -1;
             }
-
             ot = s.hasNextLine() ? s.nextLine() : "";
         }
-
-        return count;
 
     }
 

@@ -90,7 +90,7 @@ public class OdexParser {
         adjustThreshold(oatLines);
 
         try {
-            Files.write(Path.of(PathManager.getStatsPath()), stats, StandardCharsets.ISO_8859_1);
+            Files.write(Path.of(PathManager.getOdexStatsPath()), stats, StandardCharsets.ISO_8859_1);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -98,7 +98,7 @@ public class OdexParser {
     }
 
     private static List<String> getExecutedMethods() {
-        String exMethodsString = toolConfigMap.get("MethodMap");
+        String exMethodsString = toolConfigMap.keySet().stream().filter(k->k.startsWith("MethodMap")).map(toolConfigMap::get).collect(Collectors.joining());
         return Arrays.stream(exMethodsString.split("\\|")).map(s -> s.split("=")[0])
                 .map(s -> {
                     String[] splits = s.split("\\.");
@@ -239,7 +239,7 @@ public class OdexParser {
 
             }
         }
-
+        System.out.println("\nwidth avg: "+offsetMap.values().stream().map(ScannedMethod::getSize).reduce(0, Integer::sum) /offsetMap.size());
         return offsetMap;
     }
 
@@ -333,52 +333,6 @@ public class OdexParser {
         }
     }
 
-
-    //    public static List<Integer> calcDistances(List<String> classOffsets) throws IOException {
-//        List<BigInteger> asDec = classOffsets.stream().sequential().map(String::strip).map(i -> new BigInteger(i, 16)).collect(Collectors.toList());
-////        asDec.stream().sequential().forEach(i -> System.out.print(" " + i + " "));
-//        List<BigInteger> asDecSorted = asDec.stream().sequential().sorted().collect(Collectors.toList());
-//
-//        List<Integer> indexes = asDec.stream().sequential().map(asDecSorted::indexOf).collect(Collectors.toList());
-//        for (int i = 0; i < indexes.size(); i++) {
-//            int cur = indexes.get(i);
-//            if (Collections.frequency(indexes, cur) > 1) {
-//                for (int j = 0; j < indexes.size(); j++) {
-//                    if (indexes.get(j) > cur) {
-//                        indexes.set(j, indexes.get(j) + 1);
-//                    }
-//                }
-//                for (int j = 0; j < indexes.size(); j++) {
-//                    if (i != j && indexes.get(j) == cur) {
-//                        indexes.set(j, indexes.get(j) + 1);
-//                    }
-//                }
-//            }
-//        }
-//
-//
-//        for (int j = 0; j < indexes.size(); j++) {
-//            if (indexes.contains(j)) {
-//                continue;
-//            }
-//            for (int k = j; true; k++) {
-//                if (indexes.contains(k)) {
-//                    indexes.set(indexes.indexOf(k), j);
-//                    break;
-//                }
-//            }
-//        }
-//
-//        System.out.println("\noffsets in order");
-//        System.out.println(indexes.stream().map(classOffsets::get).collect(Collectors.joining(",")));
-//        System.out.println("\ndistances between offsets");
-//        IntStream.range(1, indexes.size()).forEach(i -> System.out.print((new BigInteger(classOffsets.get(indexes.indexOf(i)), 16))
-//                .subtract(new BigInteger(classOffsets.get(indexes.indexOf(i - 1)), 16)) + " "));
-//        System.out.println("\naddress count: " + indexes.size());
-//        List<String> toSideChannel = asDec.stream().map(s -> s.toString(16)).collect(Collectors.toList());
-//        verifyWithSideChannelAddresses(toSideChannel, scannedIds);
-//        return indexes;
-//    }
     public static void calcDistances(List<String> classOffsets) throws IOException {
         List<BigInteger> asDec = classOffsets.stream().sequential().map(String::strip).map(i -> new BigInteger(i, 16)).collect(Collectors.toList());
         String printString = "offsets: " + asDec.stream().map(b -> b.toString(16)).collect(Collectors.joining(","));
@@ -394,7 +348,7 @@ public class OdexParser {
         System.out.println(printString);
         stats.add(printString);
         List<String> toSideChannel = asDec.stream().map(s -> s.toString(16)).collect(Collectors.toList());
-        verifyWithSideChannelAddresses(toSideChannel);
+//        verifyWithSideChannelAddresses(toSideChannel);
 
     }
 

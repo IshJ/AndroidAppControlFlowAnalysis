@@ -4,6 +4,7 @@ import util.PathManager;
 import util.PrettyTablePrinter;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -20,6 +21,11 @@ public class StatCalculator {
 
         Map<Integer, String> revMIdMapping = analysedMethods.stream().filter(JavaMethod::isActive).collect(Collectors.toMap(JavaMethod::getLogParserId, JavaMethod::getShortName));
         Map<Integer, Integer> durationMap = new HashMap<>();
+        Map<Integer, Integer> sizeMap = analysedMethods.stream().filter(JavaMethod::isActive).collect(Collectors.toMap(JavaMethod::getLogParserId, JavaMethod::getSize));
+        BigInteger minOffset = analysedMethods.stream().map(m->m.getOdexOffsets().get(0))
+                .map(o->new BigInteger(o, 16)).min(BigInteger::compareTo).get();
+        Map<Integer, BigInteger> distanceMap =analysedMethods.stream().filter(JavaMethod::isActive).collect(Collectors.toMap(JavaMethod::getLogParserId,
+                m-> new BigInteger(m.getOdexOffsets().get(0), 16).subtract(minOffset))) ;
 
         for (Integer mId : boundaries.keySet()) {
             int medianDuration = 0;
@@ -28,7 +34,7 @@ public class StatCalculator {
                         .map(e -> e.getValue() - e.getKey()).sorted().collect(Collectors.toList())
                         .get(boundaries.get(mId).size() / 2 - 1);
             } else {
-                medianDuration = boundaries.get(mId).get(0);
+                medianDuration = boundaries.get(mId).keySet().stream().findFirst().get();
             }
             durationMap.put(mId,medianDuration);
         }
@@ -56,7 +62,7 @@ public class StatCalculator {
 
             truePositive = entrySet.stream().filter(es-> scanTimings.stream().anyMatch(st-> st >= es.getKey() && st <= es.getValue())).count();
             truePositive1 = scanTimings.stream().filter(st -> entrySet.stream().anyMatch(es -> st >= es.getKey() && st <= es.getValue())).count();
-            falsePositive = scanTimings.size() - truePositive1;
+            falsePositive = scanTimings.size()> truePositive?scanTimings.size()- truePositive:0;
 
             falseNegative = entrySet.stream().filter(es -> scanTimings.stream().noneMatch(st -> st >= es.getKey() && st <= es.getValue())).count();
 
@@ -67,6 +73,8 @@ public class StatCalculator {
             tableRows.add(new StringJoiner(columnSeparator)
                     .add(String.valueOf(m))
                     .add(revMIdMapping.get(m))
+                    .add(String.valueOf(sizeMap.get(m)))
+                    .add(distanceMap.get(m).toString(10))
                     .add(String.valueOf(durationMap.get(m)))
                     .add(String.valueOf(entrySet.size()))
                     .add(String.valueOf(scanTimings.size()))
@@ -91,15 +99,10 @@ public class StatCalculator {
 
     }
 
-    public static void printPrintAndWrite(List<String> rows) {
-        List<String> headers = Arrays.asList("method id", "method name","duration estimate", "ground truth count"
-                , "hit count", "precision", "recall", "f1");
-        List<String> prettyRows = PrettyTablePrinter.printPrettyTable(headers, rows, columnSeparator);
-        try {
+    public static List<String> getFormattedTable(List<String> rows) {
+        List<String> headers = Arrays.asList("id", "name","width","distance","duration estimate", "ground truths"
+                , "hits", "precision", "recall", "f1");
+        return PrettyTablePrinter.printPrettyTable(headers, rows, columnSeparator);
 
-            Files.write(Paths.get(PathManager.getStatsPath()), prettyRows, StandardOpenOption.APPEND);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 }
